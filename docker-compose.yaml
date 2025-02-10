@@ -1,0 +1,61 @@
+version: '3'
+services:
+  sourcepg:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=source_db
+    volumes:
+      - "./source_db_init/init.sql:/docker-entrypoint-initdb.d/init.sql"
+    ports:
+      - "5433:5432"
+    networks:
+      - etl_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root"]
+      interval: 10s
+      retries: 5
+  
+  destpg:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=dest_db
+    ports:
+      - "5434:5432"
+    networks:
+      - etl_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root"]
+      interval: 10s
+      retries: 5
+  
+  elt_script:
+    build: ./etl
+    command: ["python", "/app/etl_script.py"]
+    networks:
+      - etl_network
+    depends_on:
+      sourcepg:
+        condition: service_healthy
+      destpg:
+        condition: service_healthy
+    restart: on-failure
+
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    volumes:
+      - "./pgadmin_conn_data:/var/lib/pgadmin"
+    ports:
+      - "5050:80"
+    networks:
+      - etl_network
+
+networks:
+  etl_network:
+    driver: bridge
